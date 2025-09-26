@@ -658,7 +658,7 @@ Use a modern tool like `@hey-api/openapi-ts` or `openapi-typescript` with `opena
 // package.json
 {
   "scripts": {
-    "generate:api": "bunx @hey-api/openapi-ts -i http://localhost:8000/openapi.json -o src/lib/api/generated -c fetch"
+    "generate:api": "bunx @hey-api/openapi-ts -i http://localhost:8005/openapi.json -o src/lib/api/generated -c fetch"
   }
 }
 ```
@@ -1033,3 +1033,126 @@ For larger projects, a more granular component folder structure prevents code fr
 ```
 
 This structure scales well as your application grows and makes it easy for team members to find and contribute to the right components.
+
+---
+
+## 16. React `useEffect` Guidelines for Next.js 15 with TanStack Query and Zustand
+
+React 19 plus Next.js 15's server-first model changes when and why to use `useEffect`. Most things that used to live in effects should now happen during server render or be modeled as URL or UI state. Keep `useEffect` narrowly scoped to real external effects.
+
+### Core Rule of Thumb
+
+- Prefer server rendering for data and derive values during render. Reserve `useEffect` only for external systems (DOM reads/writes, subscriptions, timers, 3rd-party widgets) and required cleanup.
+
+### You Might Not Need an Effect
+
+Before adding an effect, first try one of these:
+
+- Transforming data for rendering: compute during render, or `useMemo` only if expensive.
+- Handling user events: put logic inside event handlers, not effects.
+- Resetting state when inputs change: use a changing `key` prop or compute initial state from props.
+- Updating state based on other state/props: compute next values during render instead of syncing via effects.
+
+Reference: [You Might Not Need an Effect](https://react.dev/learn/you-might-not-need-an-effect)
+
+### What `useEffect` IS for
+
+- Synchronizing with external systems (DOM APIs, third-party widgets, analytics, media APIs).
+- Subscriptions to push sources (e.g., WebSocket client listeners) and teardown on unmount.
+- Non-React imperative work after paint. Use `useLayoutEffect` only for layout measurement that must run before paint.
+
+### If your effect was doing X → Use this in our stack
+
+- Fetching on mount/param change → Fetch in Server Components. Stream with PPR as needed. If you truly must fetch on the client (browser-only dependency), wrap with TanStack Query `useSuspenseQuery`/`useQuery` and seed from the server via `initialData` or dehydrated state.
+- Submitting/mutating → Server Actions for all mutations. On success: use `revalidatePath`/`revalidateTag` server-side, and `queryClient.invalidateQueries()` client-side when wrapping with TanStack Query `useMutation` for optimistic UX.
+- Syncing UI to the query string → Model state in the URL using Next.js `searchParams` in Server Components and `useRouter`/`<Link>` in clients. Avoid storing URL state in Zustand.
+- Derived state from props/server data → Compute directly during render; use `useMemo` only for expensive work.
+- Subscribing to external stores (non-React) → Use `useSyncExternalStore` to integrate safely with React; for Zustand, use store hooks/selectors directly.
+- DOM/3rd-party widgets/listeners → Minimal `useEffect`/`useLayoutEffect` with proper cleanup.
+
+### Decision Checklist
+
+- Data needed to render → Fetch in Server Component (use caching tags or PPR as needed).
+- User changed data → Server Action mutation → invalidate path/tag; client may also invalidate TanStack Query.
+- Belongs in the URL → Use typed `searchParams` and router navigation, not component or global state.
+- Purely derived → Compute in render; memoize only when necessary.
+- External system only → `useEffect`/`useLayoutEffect` with cleanup.
+- SEO/SSR critical → Prefer server data fetching and streaming over client effects.
+
+### React 19 Helpers in this model
+
+- `useActionState`: Pair with Server Actions in forms to manage pending/error/result without ad-hoc effects.
+- `use()`: In Client Components, unwrap async props (e.g., `params`, `searchParams`) or promises intentionally passed from the server.
+
+### How TanStack Query fits
+
+- Not for initial page data (fetch that on the server). Use it to manage client-side async lifecycles, optimistic updates, retries, and background refresh.
+- Prefer `useSuspenseQuery` when leaning into Suspense boundaries; otherwise `useQuery` with `initialData` from the server to avoid waterfalls.
+- After Server Action mutations, call `queryClient.invalidateQueries()` to reconcile optimistic UI with canonical server state.
+
+### How Zustand fits
+
+- Use only for client UI/session state: theme, modals, wizards, ephemeral optimistic buffers. Never store canonical server data in Zustand.
+- Always use the per-request store pattern (see Section 4) to avoid SSR leaks. Hydrate only client/session pieces; avoid touching storage during SSR.
+- Use atomic selectors and `useShallow` to limit re-renders. Keep server cache (TanStack Query) separate from UI state (Zustand).
+
+### Minimal examples
+
+Client-side query seeded by server data:
+
+```typescript
+'use client'
+import { useSuspenseQuery } from '@tanstack/react-query'
+
+export function WidgetList({ initialWidgets }: { initialWidgets: any[] }) {
+  const { data } = useSuspenseQuery({
+    queryKey: ['widgets'],
+    queryFn: async () => initialWidgets, // real apps: fetcher only if truly client-only
+    initialData: initialWidgets,
+  })
+  return <ul>{data.map(w => <li key={w.id}>{w.name}</li>)}</ul>
+}
+```
+
+Server Action mutation wrapped with TanStack Query:
+
+```typescript
+'use client'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { createWidget } from '@/app/dashboard/_actions' // 'use server'
+
+export function CreateWidgetButton() {
+  const qc = useQueryClient()
+  const { mutate, isPending } = useMutation({
+    mutationFn: async (name: string) => {
+      const fd = new FormData()
+      fd.set('name', name)
+      await createWidget(undefined as any, fd)
+    },
+    onSuccess: async () => {
+      // Server will revalidate path/tag; also reconcile client cache
+      await qc.invalidateQueries({ queryKey: ['widgets'] })
+    },
+  })
+  return <button onClick={() => mutate('New Widget')} disabled={isPending}>Create</button>
+}
+```
+
+Small, real external effect (DOM listener) with cleanup:
+
+```typescript
+'use client'
+import { useEffect, useState } from 'react'
+
+export function WindowWidth() {
+  const [width, setWidth] = useState<number>(0)
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth)
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return <span>{width}</span>
+}
+```
+
