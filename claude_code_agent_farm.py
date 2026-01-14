@@ -312,13 +312,17 @@ class AgentMonitor:
         # Multiple possible indicators that Claude is ready
         ready_indicators = [
             "Welcome to Claude Code!" in content,  # Welcome message
+            "Welcome back" in content,  # New welcome message (v2.0.76+)
             ("│ > Try" in content),  # The prompt box with suggestion
+            ("> Try" in content),  # New prompt format (v2.0.76+)
             ("? for shortcuts" in content),  # Shortcuts hint at bottom
+            ("bypass permissions" in content),  # New bypass permissions hint (v2.0.76+)
             ("╰─" in content and "│ >" in content),  # Box structure with prompt
             ("/help for help" in content),  # Help text in welcome message
             ("cwd:" in content and "Welcome to Claude" in content),  # Working directory shown
             ("Bypassing Permissions" in content and "│ >" in content),  # May appear with prompt
             ("│ >" in content and "─╯" in content),  # Prompt box bottom border
+            ("Claude Code v" in content),  # Version header (v2.0.76+)
         ]
         return any(ready_indicators)
 

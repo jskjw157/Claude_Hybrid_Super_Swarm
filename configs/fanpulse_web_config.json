@@ -1,0 +1,31 @@
+{
+  "comment": "Configuration for FanPulse Web - Next.js 16 + React 19 + TypeScript",
+  "tech_stack": "nextjs",
+  "problem_commands": {
+    "type_check": ["npx", "tsc", "--noEmit"],
+    "lint": ["npm", "run", "lint"]
+  },
+  "best_practices_files": ["./best_practices_guides/NEXTJS15_BEST_PRACTICES.md"],
+  "chunk_size": 30,
+  "agents": 5,
+  "session": "fanpulse_agents",
+  "stagger": 10.0,
+  "wait_after_cc": 15.0,
+  "check_interval": 10,
+  "skip_regenerate": false,
+  "skip_commit": true,
+  "auto_restart": true,
+  "no_monitor": false,
+  "attach": false,
+  "prompt_file": "prompts/default_prompt_nextjs.txt",
+  "context_threshold": 20,
+  "idle_timeout": 60,
+  "max_errors": 3,
+  "git_branch": null,
+  "git_remote": "origin",
+  "tmux_kill_on_exit": true,
+  "tmux_mouse": true,
+  "fast_start": false,
+  "full_backup": false,
+  "max_agents": 20
+}
